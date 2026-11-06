@@ -3,125 +3,737 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Voice Cloning Web App</title>
-  <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.development.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.development.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.22.9/babel.min.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen flex items-center justify-center">
-  <div id="root"></div>
-  <script type="text/babel">
-    function VoiceCloningApp() {
-      const [text, setText] = React.useState('');
-      const [audioFile, setAudioFile] = React.useState(null);
-      const [generatedAudio, setGeneratedAudio] = React.useState(null);
-      const [loading, setLoading] = React.useState(false);
-      const [error, setError] = React.useState('');
+  <title>Echo Voice Replica — High-Fidelity AI Voice Cloning</title>
+  <meta name="description" content="Clone any voice with high fidelity using XTTS v2 AI voice cloning technology. Upload reference audio and generate natural speech.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-      const handleFileChange = (e) => {
-        setAudioFile(e.target.files[0]);
-        setError('');
-      };
-
-      const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!audioFile || !text) {
-          setError('Please provide both an audio file and text.');
-          return;
-        }
-
-        setLoading(true);
-        setError('');
-        setGeneratedAudio(null);
-
-        const formData = new FormData();
-        formData.append('audio', audioFile);
-        formData.append('text', text);
-
-        try {
-          const response = await fetch('http://localhost:5000/generate_voice', {
-            method: 'POST',
-            body: formData,
-          });
-
-          if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to generate audio.');
-          }
-
-          const blob = await response.blob();
-          const audioUrl = URL.createObjectURL(blob);
-          setGeneratedAudio(audioUrl);
-        } catch (err) {
-          setError('Error generating audio: ' + err.message);
-        } finally {
-          setLoading(false);
-        }
-      };
-
-      return (
-        <div className="max-w-2xl w-full mx-auto p-6 bg-white rounded-lg shadow-lg">
-          <h1 className="text-3xl font-bold text-center text-gray-800 mb-6">
-            Voice Cloning Web App
-          </h1>
-          <p className="text-center text-gray-600 mb-8">
-            Upload an audio sample and enter text to generate speech in the same voice!
-          </p>
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Upload Audio Sample (WAV)
-              </label>
-              <input
-                type="file"
-                accept="audio/wav"
-                onChange={handleFileChange}
-                className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700">
-                Text to Synthesize
-              </label>
-              <textarea
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                rows="4"
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
-                placeholder="Enter the text you want to synthesize..."
-              />
-            </div>
-
-            {error && (
-              <p className="text-red-500 text-sm">{error}</p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className={`w-full py-2 px-4 rounded-md text-white font-semibold ${
-                loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'
-              }`}
-            >
-              {loading ? 'Generating...' : 'Generate Audio'}
-            </button>
-          </form>
-
-          {generatedAudio && (
-            <div className="mt-6">
-              <h2 className="text-lg font-medium text-gray-800">Generated Audio</h2>
-              <audio controls src={generatedAudio} className="w-full mt-2" />
-            </div>
-          )}
-        </div>
-      );
+    :root {
+      --bg-primary: #0a0e1a;
+      --bg-secondary: #111827;
+      --bg-card: rgba(17, 24, 39, 0.75);
+      --bg-glass: rgba(255, 255, 255, 0.04);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(139, 92, 246, 0.4);
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #8b5cf6;
+      --accent-light: #a78bfa;
+      --accent-glow: rgba(139, 92, 246, 0.25);
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --radius: 16px;
+      --radius-sm: 10px;
+      --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
 
-    ReactDOM.render(<VoiceCloningApp />, document.getElementById('root'));
-  </script>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+      line-height: 1.6;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background:
+        radial-gradient(ellipse at 20% 50%, rgba(139, 92, 246, 0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 80% 20%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 80%, rgba(236, 72, 153, 0.07) 0%, transparent 50%);
+      animation: bgShift 20s ease-in-out infinite alternate;
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    @keyframes bgShift {
+      0% { transform: translate(0, 0) rotate(0deg); }
+      100% { transform: translate(-5%, 3%) rotate(3deg); }
+    }
+
+    .container {
+      position: relative;
+      z-index: 1;
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 40px 20px 60px;
+    }
+
+    /* Header */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .logo {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .logo-icon {
+      width: 52px;
+      height: 52px;
+      background: linear-gradient(135deg, var(--accent), #ec4899);
+      border-radius: 14px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 26px;
+      box-shadow: 0 4px 24px var(--accent-glow);
+      animation: logoPulse 3s ease-in-out infinite;
+    }
+
+    @keyframes logoPulse {
+      0%, 100% { box-shadow: 0 4px 20px var(--accent-glow); }
+      50% { box-shadow: 0 4px 30px rgba(139, 92, 246, 0.4); }
+    }
+
+    .logo-text {
+      font-size: 28px;
+      font-weight: 800;
+      background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent-light) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      letter-spacing: -0.5px;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 15px;
+      font-weight: 400;
+      max-width: 500px;
+      margin: 0 auto;
+    }
+
+    .badge-engine {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: rgba(139, 92, 246, 0.15);
+      border: 1px solid rgba(139, 92, 246, 0.3);
+      color: var(--accent-light);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    /* Card */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      transition: border-color var(--transition);
+    }
+
+    .card:hover { border-color: var(--border-hover); }
+    .card + .card { margin-top: 24px; }
+
+    /* Section title */
+    .section-title {
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: var(--accent-light);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Upload zone */
+    .upload-zone {
+      position: relative;
+      border: 2px dashed var(--border);
+      border-radius: var(--radius-sm);
+      padding: 28px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: all var(--transition);
+      background: var(--bg-glass);
+    }
+
+    .upload-zone:hover, .upload-zone.drag-over {
+      border-color: var(--accent);
+      background: var(--accent-glow);
+    }
+
+    .upload-zone.has-file {
+      border-color: var(--success);
+      background: rgba(16, 185, 129, 0.05);
+    }
+
+    .upload-zone input[type="file"] {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .upload-icon {
+      font-size: 32px;
+      display: block;
+      margin-bottom: 8px;
+    }
+
+    .upload-text {
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .upload-text strong {
+      color: var(--text-primary);
+    }
+
+    .upload-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+
+    /* Audio Info Badges */
+    .audio-info {
+      display: none;
+      gap: 10px;
+      margin-top: 14px;
+      flex-wrap: wrap;
+    }
+
+    .audio-info.visible { display: flex; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+
+    .badge .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .badge.good .dot { background: var(--success); }
+    .badge.good { border-color: rgba(16, 185, 129, 0.3); color: var(--success); }
+    .badge.fair .dot { background: var(--warning); }
+    .badge.fair { border-color: rgba(245, 158, 11, 0.3); color: var(--warning); }
+    .badge.poor .dot { background: var(--danger); }
+    .badge.poor { border-color: rgba(239, 68, 68, 0.3); color: var(--danger); }
+
+    /* Textarea */
+    .textarea-wrap {
+      position: relative;
+    }
+
+    textarea {
+      width: 100%;
+      height: 130px;
+      padding: 16px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      outline: none;
+      transition: border-color var(--transition);
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    textarea::placeholder {
+      color: var(--text-muted);
+    }
+
+    .char-count {
+      position: absolute;
+      bottom: 12px;
+      right: 14px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Select input */
+    .select-wrap {
+      position: relative;
+    }
+
+    select {
+      width: 100%;
+      padding: 12px 16px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      cursor: pointer;
+      appearance: none;
+      transition: border-color var(--transition);
+    }
+
+    select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow);
+    }
+
+    .select-wrap::after {
+      content: '▼';
+      font-size: 10px;
+      color: var(--text-muted);
+      position: absolute;
+      right: 16px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+
+    /* Generate button */
+    .btn-generate {
+      width: 100%;
+      padding: 16px 24px;
+      margin-top: 28px;
+      background: linear-gradient(135deg, var(--accent), #7c3aed);
+      color: #fff;
+      font-family: inherit;
+      font-size: 15px;
+      font-weight: 600;
+      border: none;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn-generate:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 30px var(--accent-glow);
+    }
+
+    .btn-generate:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .btn-generate .spinner {
+      display: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(255,255,255,0.3);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-right: 10px;
+    }
+
+    .btn-generate.loading .spinner { display: inline-block; }
+    .btn-generate.loading .btn-text { display: none; }
+    .btn-generate.loading .btn-loading-text { display: inline; }
+    .btn-loading-text { display: none; }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Error */
+    .error-msg {
+      margin-top: 16px;
+      padding: 12px 16px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      border-radius: var(--radius-sm);
+      color: var(--danger);
+      font-size: 13px;
+      display: none;
+    }
+
+    .error-msg.visible { display: block; }
+
+    /* Output card */
+    .output-card {
+      display: none;
+      animation: slideUp 0.5s ease-out;
+    }
+
+    .output-card.visible { display: block; }
+
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .output-card audio {
+      width: 100%;
+      margin-top: 12px;
+      border-radius: 8px;
+    }
+
+    .output-meta {
+      display: flex;
+      gap: 16px;
+      margin-top: 12px;
+      flex-wrap: wrap;
+    }
+
+    .output-meta span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .download-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 16px;
+      padding: 10px 20px;
+      background: var(--bg-glass);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--accent-light);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      text-decoration: none;
+      transition: all var(--transition);
+    }
+
+    .download-btn:hover {
+      background: var(--accent-glow);
+      border-color: var(--accent);
+    }
+
+    /* Tips section */
+    .tips { margin-top: 24px; }
+    .tip {
+      display: flex;
+      gap: 10px;
+      padding: 10px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .tip .tip-icon { flex-shrink: 0; width: 20px; text-align: center; }
+
+    /* Footer */
+    .footer {
+      text-align: center;
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">
+      <div class="logo-icon">🎙️</div>
+      <span class="logo-text">Echo Voice Replica</span>
+    </div>
+    <p class="subtitle">Generate exact, high-fidelity voice clones in seconds using zero-shot AI technology.</p>
+    <div class="badge-engine">
+      <span>✨ Powered by XTTS v2 Engine (24 kHz Multilingual)</span>
+    </div>
+  </div>
+
+  <!-- Main Form Card -->
+  <div class="card">
+    <form id="voiceForm">
+
+      <!-- Reference Audio Upload -->
+      <div class="section-title">
+        <span class="icon">📁</span> Reference Voice Sample
+      </div>
+
+      <div class="upload-zone" id="uploadZone">
+        <input type="file" id="audioInput" accept="audio/*" />
+        <span class="upload-icon" id="uploadIcon">🎵</span>
+        <div class="upload-text" id="uploadText">
+          <strong>Click to upload</strong> or drag & drop<br>
+          your reference voice sample here
+        </div>
+        <div class="upload-hint">WAV, MP3, FLAC, OGG • 3–10 seconds of clear speech recommended</div>
+      </div>
+
+      <div class="audio-info" id="audioInfo">
+        <div class="badge" id="durationBadge">
+          <span class="dot"></span>
+          <span id="durationText">—</span>
+        </div>
+        <div class="badge" id="qualityBadge">
+          <span class="dot"></span>
+          <span id="qualityText">—</span>
+        </div>
+        <div class="badge" id="srBadge">
+          <span id="srText">—</span>
+        </div>
+      </div>
+
+      <!-- Text Input -->
+      <div style="margin-top: 28px;">
+        <div class="section-title">
+          <span class="icon">✏️</span> Text to Synthesize
+        </div>
+        <div class="textarea-wrap">
+          <textarea
+            id="textInput"
+            placeholder="Type the text you want the cloned voice to speak...&#10;&#10;Example: Hello! This is an exact voice clone generated using high-fidelity AI."
+            maxlength="2000"
+          ></textarea>
+          <span class="char-count" id="charCount">0 / 2000</span>
+        </div>
+      </div>
+
+      <!-- Language Selection -->
+      <div style="margin-top: 28px;">
+        <div class="section-title">
+          <span class="icon">🌐</span> Target Language
+        </div>
+        <div class="select-wrap">
+          <select id="languageSelect">
+            <option value="en" selected>English</option>
+            <option value="hi">Hindi (हिंदी)</option>
+            <option value="es">Spanish (Español)</option>
+            <option value="fr">French (Français)</option>
+            <option value="de">German (Deutsch)</option>
+            <option value="it">Italian (Italiano)</option>
+            <option value="pt">Portuguese (Português)</option>
+            <option value="tr">Turkish (Türkçe)</option>
+            <option value="ru">Russian (Русский)</option>
+            <option value="nl">Dutch (Nederlands)</option>
+            <option value="zh-cn">Chinese (中文)</option>
+            <option value="ja">Japanese (日本語)</option>
+            <option value="ko">Korean (한국어)</option>
+            <option value="ar">Arabic (العربية)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Generate Button -->
+      <button type="submit" class="btn-generate" id="generateBtn" disabled>
+        <span class="spinner"></span>
+        <span class="btn-text">🎤 Generate Cloned Voice</span>
+        <span class="btn-loading-text">Cloning Voice... Please wait</span>
+      </button>
+
+      <!-- Error Display -->
+      <div class="error-msg" id="errorMsg"></div>
+
+    </form>
+  </div>
+
+  <!-- Output Card -->
+  <div class="card output-card" id="outputCard">
+    <div class="section-title">
+      <span class="icon">🔊</span> Generated High-Fidelity Audio
+    </div>
+    <audio controls id="outputAudio"></audio>
+    <div class="output-meta" id="outputMeta"></div>
+    <a class="download-btn" id="downloadBtn" href="#" download="cloned_voice_output.wav">
+      ⬇️ Download Cloned WAV
+    </a>
+  </div>
+
+  <!-- Tips -->
+  <div class="card tips">
+    <div class="section-title">
+      <span class="icon">💡</span> Tips for Exact Voice Replication
+    </div>
+    <div class="tip">
+      <span class="tip-icon">🎙️</span>
+      <span>Use a <strong>clean recording</strong> with minimal background noise or echo.</span>
+    </div>
+    <div class="tip">
+      <span class="tip-icon">⏱️</span>
+      Provide <strong>6 to 30 seconds</strong> of clear Indian-English speech so the accent and pronunciation are captured.
+    </div>
+    <div class="tip">
+      <span class="tip-icon">📝</span>
+      <span>Use proper <strong>punctuation</strong> (commas, periods) to ensure natural speech pauses.</span>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    Echo Voice Replica &nbsp;·&nbsp; Powered by XTTS v2 Zero-Shot Voice Cloning
+  </div>
+
+</div>
+
+<script>
+  const audioInput = document.getElementById('audioInput');
+  const textInput = document.getElementById('textInput');
+  const languageSelect = document.getElementById('languageSelect');
+  const generateBtn = document.getElementById('generateBtn');
+  const form = document.getElementById('voiceForm');
+  const errorMsg = document.getElementById('errorMsg');
+  const uploadZone = document.getElementById('uploadZone');
+  const uploadIcon = document.getElementById('uploadIcon');
+  const uploadText = document.getElementById('uploadText');
+  const audioInfo = document.getElementById('audioInfo');
+  const outputCard = document.getElementById('outputCard');
+  const outputAudio = document.getElementById('outputAudio');
+  const outputMeta = document.getElementById('outputMeta');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const charCount = document.getElementById('charCount');
+
+  let currentAudioFile = null;
+
+  textInput.addEventListener('input', () => {
+    charCount.textContent = `${textInput.value.length} / 2000`;
+    updateBtnState();
+  });
+
+  audioInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    currentAudioFile = file;
+    uploadZone.classList.add('has-file');
+    uploadIcon.textContent = '✅';
+    uploadText.innerHTML = `<strong>${file.name}</strong><br><span style="color:var(--text-muted);font-size:12px">${(file.size / 1024 / 1024).toFixed(2)} MB</span>`;
+
+    updateBtnState();
+
+    try {
+      const infoForm = new FormData();
+      infoForm.append('audio', file);
+      const res = await fetch('/audio_info', { method: 'POST', body: infoForm });
+      if (res.ok) {
+        const info = await res.json();
+        document.getElementById('durationText').textContent = `${info.speech_duration}s speech`;
+        document.getElementById('srText').textContent = `${info.sample_rate} Hz`;
+
+        const qBadge = document.getElementById('qualityBadge');
+        const qText = document.getElementById('qualityText');
+        qText.textContent = info.quality === 'good' ? 'Good quality' :
+                             info.quality === 'fair' ? 'Fair quality' : 'Poor quality';
+        qBadge.className = `badge ${info.quality}`;
+        document.getElementById('durationBadge').className = `badge ${info.quality}`;
+
+        audioInfo.classList.add('visible');
+      }
+    } catch (err) {
+      console.warn('Could not fetch audio info:', err);
+    }
+  });
+
+  uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+
+  uploadZone.addEventListener('dragleave', () => {
+    uploadZone.classList.remove('drag-over');
+  });
+
+  uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      audioInput.files = files;
+      audioInput.dispatchEvent(new Event('change'));
+    }
+  });
+
+  function updateBtnState() {
+    generateBtn.disabled = !(currentAudioFile && textInput.value.trim().length > 0);
+  }
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    if (!currentAudioFile || !textInput.value.trim()) return;
+
+    generateBtn.disabled = true;
+    generateBtn.classList.add('loading');
+    errorMsg.classList.remove('visible');
+    outputCard.classList.remove('visible');
+
+    const formData = new FormData();
+    formData.append('audio', currentAudioFile);
+    formData.append('text', textInput.value.trim());
+    formData.append('language', languageSelect.value);
+
+    const startTime = Date.now();
+
+    try {
+      const response = await fetch('/generate_voice', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let errText = 'Failed to generate cloned voice.';
+        try {
+          const errData = await response.json();
+          errText = errData.error || errText;
+        } catch (_) {}
+        throw new Error(errText);
+      }
+
+      const blob = await response.blob();
+      const audioUrl = URL.createObjectURL(blob);
+      const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+
+      outputAudio.src = audioUrl;
+      downloadBtn.href = audioUrl;
+      outputMeta.innerHTML = `
+        <span>⏱️ Generated in ${elapsed}s</span>
+        <span>🌐 Language: ${languageSelect.options[languageSelect.selectedIndex].text}</span>
+        <span>📦 ${(blob.size / 1024).toFixed(1)} KB (24 kHz)</span>
+      `;
+      outputCard.classList.add('visible');
+      outputCard.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    } catch (err) {
+      errorMsg.textContent = '❌ ' + err.message;
+      errorMsg.classList.add('visible');
+    } finally {
+      generateBtn.disabled = false;
+      generateBtn.classList.remove('loading');
+    }
+  });
+</script>
+
 </body>
 </html>
-

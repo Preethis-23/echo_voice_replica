@@ -1,371 +1,223 @@
-#works only first few words - hi, iam cricket
-'''import sys
+"""Echo Voice Replica — XTTS v2 zero-shot voice cloning service.
+
+XTTS extracts speaker conditioning directly from the uploaded reference audio
+and generates the requested text with its own neural acoustic model and
+vocoder. The reference audio is not copied; it conditions a new utterance.
+"""
+
+from pathlib import Path
 import os
-import torch
+import uuid
+
 import librosa
-import numpy as np
 import soundfile as sf
-from pathlib import Path
-from flask import Flask, request, send_file, jsonify
-from werkzeug.utils import secure_filename
-
-# Add paths to the Real-Time-Voice-Cloning repo
-base_path = "C:/Users/preethis/PycharmProjects/echco_voice_replica/Real-Time-Voice-Cloning"
-sys.path.append(base_path)
-sys.path.append(os.path.join(base_path, "synthesizer"))
-sys.path.append(os.path.join(base_path, "vocoder"))
-
-# Import voice cloning modules
-try:
-    from synthesizer.hparams import hparams
-    from encoder import inference as encoder
-    from synthesizer.inference import Synthesizer
-    from vocoder import inference as vocoder
-except ImportError as e:
-    print("Import error:", e)
-    sys.exit(1)
-
-# Initialize Flask app
-from flask_cors import CORS
-
-app = Flask(__name__)
-CORS(app)
-
-# Load models
-encoder_path = Path(base_path) / "encoder/saved_models/default/encoder.pt"
-synthesizer_path = Path(base_path) / "synthesizer/saved_models/default/synthesizer.pt"
-vocoder_path = Path(base_path) / "vocoder/saved_models/default/vocoder.pt"
-
-encoder.load_model(encoder_path)
-synthesizer = Synthesizer(synthesizer_path)
-vocoder.load_model(vocoder_path)
-
-# Directory to save uploaded and generated files
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-@app.route('/generate_voice', methods=['POST'])
-def generate_voice():
-    try:
-        if 'audio' not in request.files or 'text' not in request.form:
-            return jsonify({'error': 'Audio file and text are required'}), 400
-
-        audio_file = request.files['audio']
-        text = request.form['text']
-
-        if audio_file.filename == '' or not audio_file.filename.endswith('.wav'):
-            return jsonify({'error': 'Please upload a valid WAV file'}), 400
-
-        filename = secure_filename(audio_file.filename)
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_file.save(audio_path)
-
-        # Load and preprocess the voice sample
-        preprocessed_wav = encoder.preprocess_wav(audio_path)
-        embedding = encoder.embed_utterance(preprocessed_wav)
-
-        # Create spectrogram and generate waveform
-        spec = synthesizer.synthesize_spectrograms([text], [embedding])[0]
-        waveform = vocoder.infer_waveform(spec)
-
-        # Save output
-        output_path = os.path.join(OUTPUT_FOLDER, "output.wav")
-        sf.write(output_path, waveform, synthesizer.sample_rate)
-
-        # Clean up
-        os.remove(audio_path)
-
-        return send_file(output_path, mimetype='audio/wav', as_attachment=True, download_name='output.wav')
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/')
-def serve_frontend():
-    return send_file('index.html')
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)'''
-
-'''
-import sys
-import os
+import requests as http_requests
 import torch
-import librosa
-import numpy as np
-import soundfile as sf
-from pathlib import Path
-from flask import Flask, request, send_file, jsonify
+import torchaudio
+from flask import Flask, after_this_request, jsonify, request, send_file
+from flask_cors import CORS
 from werkzeug.utils import secure_filename
 
-# Add paths to the Real-Time-Voice-Cloning repo
-base_path = "C:/Users/preethis/PycharmProjects/echco_voice_replica/Real-Time-Voice-Cloning"
-sys.path.append(base_path)
-sys.path.append(os.path.join(base_path, "synthesizer"))
-sys.path.append(os.path.join(base_path, "vocoder"))
+REPO_ROOT = Path(__file__).resolve().parent
+os.environ.setdefault("TTS_HOME", str(REPO_ROOT / ".cache" / "tts"))
 
-# Import voice cloning modules
-try:
-    from synthesizer.hparams import hparams
-    from encoder import inference as encoder
-    from synthesizer.inference import Synthesizer
-    from vocoder import inference as vocoder
-except ImportError as e:
-    print("Import error:", e)
-    sys.exit(1)
+# Coqui's current torchaudio path uses TorchCodec, which requires a separate
+# FFmpeg shared-DLL installation on Windows. XTTS only needs decoded reference
+# samples here, so use the already-installed SoundFile backend instead.
+def _soundfile_load(path, *args, **kwargs):
+    del args, kwargs
+    samples, sample_rate = sf.read(path, always_2d=True, dtype="float32")
+    return torch.from_numpy(samples.T.copy()), sample_rate
 
-# Initialize Flask app
-from flask_cors import CORS
+
+torchaudio.load = _soundfile_load
+
+
+
+UPLOAD_FOLDER = REPO_ROOT / "uploads"
+OUTPUT_FOLDER = REPO_ROOT / "outputs"
+UPLOAD_FOLDER.mkdir(exist_ok=True)
+OUTPUT_FOLDER.mkdir(exist_ok=True)
+
+CHATTERBOX_WORKER_URL = "http://127.0.0.1:5001/generate"
+OUTPUT_SAMPLE_RATE = 24000
+ALLOWED_EXTENSIONS = {".wav", ".mp3", ".flac", ".ogg", ".m4a"}
+MAX_TEXT_LENGTH = 2000
+
+
 
 app = Flask(__name__)
 CORS(app)
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024
 
-# Load models
-encoder_path = Path(base_path) / "encoder/saved_models/default/encoder.pt"
-synthesizer_path = Path(base_path) / "synthesizer/saved_models/default/synthesizer.pt"
-vocoder_path = Path(base_path) / "vocoder/saved_models/default/vocoder.pt"
 
-encoder.load_model(encoder_path)
-synthesizer = Synthesizer(synthesizer_path)
-vocoder.load_model(vocoder_path)
-
-# Directory to save uploaded and generated files
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-@app.route('/generate_voice', methods=['POST'])
-def generate_voice():
+def remove_file(path: Path) -> None:
     try:
-        if 'audio' not in request.files or 'text' not in request.form:
-            return jsonify({'error': 'Audio file and text are required'}), 400
-
-        audio_file = request.files['audio']
-        text = request.form['text']
-
-        if audio_file.filename == '' or not audio_file.filename.endswith('.wav'):
-            return jsonify({'error': 'Please upload a valid WAV file'}), 400
-
-        filename = secure_filename(audio_file.filename)
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_file.save(audio_path)
-
-        # Load and preprocess the voice sample
-        preprocessed_wav = encoder.preprocess_wav(audio_path)
-        embedding = encoder.embed_utterance(preprocessed_wav)
-
-        # Create spectrogram and generate waveform
-        spec = synthesizer.synthesize_spectrograms([text], [embedding])[0]
-        waveform = vocoder.infer_waveform(spec)
-
-        # Save output without stretching (to maintain clarity)
-        output_path = os.path.join(OUTPUT_FOLDER, "output.wav")
-        sf.write(output_path, waveform, synthesizer.sample_rate)
-
-        # Clean up
-        os.remove(audio_path)
-
-        return send_file(output_path, mimetype='audio/wav', as_attachment=True, download_name='output.wav')
-
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/')
-def serve_frontend():
-    return send_file('index.html')
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
-'''
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
-import sys
-import os
-import numpy as np
-import soundfile as sf
-from pathlib import Path
-from flask import Flask, request, send_file, jsonify
-from werkzeug.utils import secure_filename
-import re
-from flask_cors import CORS
-import torch
-
-# Add paths to the Real-Time-Voice-Cloning repo
-repo_root = Path(__file__).resolve().parent
-base_path = repo_root / "Real-Time-Voice-Cloning"
-sys.path.append(str(base_path))
-sys.path.append(str(base_path / "synthesizer"))
-sys.path.append(str(base_path / "vocoder"))
-
-# Import voice cloning modules
-try:
-    from synthesizer.hparams import hparams
-    from encoder import inference as encoder
-    from synthesizer.inference import Synthesizer
-    from vocoder import inference as vocoder
-    from utils.default_models import ensure_default_models
-except ImportError as e:
-    print("Import error:", e)
-    sys.exit(1)
-
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
-# Load models
-# Use the canonical RTVC model location: Real-Time-Voice-Cloning/saved_models/default/*.pt
-# This avoids accidentally loading placeholder or mismatched weights elsewhere in the repo.
-ensure_default_models(base_path / "saved_models")
-
-encoder_path = base_path / "saved_models" / "default" / "encoder.pt"
-synthesizer_path = base_path / "saved_models" / "default" / "synthesizer.pt"
-vocoder_path = base_path / "saved_models" / "default" / "vocoder.pt"
-
-encoder.load_model(encoder_path)
-synthesizer = Synthesizer(synthesizer_path)
-vocoder.load_model(vocoder_path)
-
-# --- audio utilities -------------------------------------------------------
-def normalize_audio(waveform: np.ndarray) -> np.ndarray:
-    """Peak-normalize safely to avoid clipping or exploding gain."""
-    waveform = np.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float32)
-    peak = float(np.max(np.abs(waveform))) if waveform.size else 0.0
-    if peak > 1e-6:
-        waveform = (waveform / peak) * 0.95
-    return np.clip(waveform, -1.0, 1.0)
-
-# Directory to save uploaded and generated files
-UPLOAD_FOLDER = "uploads"
-OUTPUT_FOLDER = "outputs"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(OUTPUT_FOLDER, exist_ok=True)
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
-# Enhance input text for better rhythm and natural pauses
-def enhance_text_with_pauses(text):
-    text = re.sub(r'\b(and|but|so|because|then|when)\b', r'\1,', text, flags=re.IGNORECASE)
-    text = re.sub(r'([.,!?])([^\s])', r'\1 \2', text)
-    words = text.split()
-    result = []
-    for i in range(0, len(words), 15):
-        chunk = words[i:i+15]
-        if len(chunk) == 15:
-            result.append(' '.join(chunk) + ',')
-        else:
-            result.append(' '.join(chunk))
-    return ' '.join(result)
-
-@app.route('/generate_voice', methods=['POST'])
-def generate_voice():
+def validate_reference_audio(path: Path) -> tuple[float, int]:
+    """Validate that a reference contains enough audio for speaker conditioning."""
     try:
-        if 'audio' not in request.files or 'text' not in request.form:
-            return jsonify({'error': 'Audio file and text are required'}), 400
+        audio, sample_rate = librosa.load(str(path), sr=None, mono=True)
+    except Exception as exc:
+        raise ValueError(f"Could not decode the reference audio: {exc}") from exc
 
-        audio_file = request.files['audio']
-        raw_text = request.form['text']
+    if audio.size == 0:
+        raise ValueError("The reference audio is empty or could not be decoded.")
 
-        if audio_file.filename == '' or not audio_file.filename.endswith('.wav'):
-            return jsonify({'error': 'Please upload a valid WAV file'}), 400
+    trimmed, _ = librosa.effects.trim(audio, top_db=30)
+    duration = len(trimmed) / float(sample_rate)
+    if duration < 3.0:
+        raise ValueError(
+            "Reference audio must contain at least 3 seconds of clear speech."
+        )
+    return duration, sample_rate
 
-        # Enhance text
-        text = enhance_text_with_pauses(raw_text)
 
-        filename = secure_filename(audio_file.filename)
-        audio_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_file.save(audio_path)
+@app.route("/generate_voice", methods=["POST"])
+def generate_voice():
+    reference_path: Path | None = None
+    try:
+        if "audio" not in request.files or "text" not in request.form:
+            return jsonify({"error": "Audio file and text are required"}), 400
 
-        # Load and preprocess the voice sample
-        # Note: encoder expects 16 kHz; preprocess_wav handles resampling.
-        preprocessed_wav = encoder.preprocess_wav(audio_path, trim_silence=False)
-        duration_sec = len(preprocessed_wav) / float(encoder.sampling_rate)
-        if duration_sec < 1.6:
-            return jsonify({'error': 'Reference audio too short; please provide at least 2 seconds of clean speech.'}), 400
+        audio_file = request.files["audio"]
+        text = request.form["text"].strip()
+        language = request.form.get("language", "en").strip().lower()
 
-        with torch.no_grad():
-            embedding = encoder.embed_utterance(preprocessed_wav)
-            # Create spectrogram and generate waveform
-            spec = synthesizer.synthesize_spectrograms([text], [embedding])[0]
+        if not text:
+            return jsonify({"error": "Text cannot be empty"}), 400
+        if len(text.split()) < 4:
+            return jsonify({"error": "Please enter at least 4 words so the voice cloning model has enough context."}), 400
+        if len(text) > MAX_TEXT_LENGTH:
+            return jsonify({"error": f"Text cannot exceed {MAX_TEXT_LENGTH} characters"}), 400
+        if not audio_file.filename:
+            return jsonify({"error": "No audio file selected"}), 400
 
-            # Choose vocoder mode: 'wave' uses WaveRNN, 'griffin' uses Griffin-Lim
-            voc_mode = request.form.get('vocoder', 'wave')
-            if voc_mode not in ('wave', 'griffin'):
-                voc_mode = 'wave'
+        extension = Path(audio_file.filename).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            return jsonify({
+                "error": f"Unsupported format '{extension}'. Use: "
+                + ", ".join(sorted(ALLOWED_EXTENSIONS))
+            }), 400
 
-                    # allow overriding WaveRNN inference params via form
-            voc_target = int(request.form.get('voc_target', 8000))
-            voc_overlap = int(request.form.get('voc_overlap', 200))
+        filename = f"{uuid.uuid4().hex}_{secure_filename(audio_file.filename)}"
+        reference_path = UPLOAD_FOLDER / filename
+        audio_file.save(reference_path)
+        speech_duration, source_sample_rate = validate_reference_audio(reference_path)
+        print(
+            f"[INFO] Reference: {speech_duration:.1f}s speech, "
+            f"{source_sample_rate} Hz, language={language}"
+        )
 
-            if voc_mode == 'griffin':
-                waveform = synthesizer.griffin_lim(spec)
-            elif voc_mode == 'hifigan':
-                # Try HiFi-GAN if available
-                try:
-                    from hifigan.inference import infer_waveform as hifi_infer, load_model as hifi_load, is_loaded as hifi_is_loaded
-                    hifi_path = base_path / 'saved_models' / 'default' / 'hifigan.pt'
-                    if not hifi_is_loaded() and hifi_path.exists():
-                        hifi_load(hifi_path)
-                    waveform = hifi_infer(spec)
-                except Exception as e:
-                    print('HiFi-GAN not available or failed to run:', e)
-                    waveform = vocoder.infer_waveform(spec, target=voc_target, overlap=voc_overlap)
-            else:
-                waveform = vocoder.infer_waveform(spec, target=voc_target, overlap=voc_overlap)
+        output_path = OUTPUT_FOLDER / "chatterbox_output.wav"
 
-        # Optional lightweight lowpass to suppress high-frequency noise
-        try:
-            from scipy.signal import butter, filtfilt
-            def lowpass(wav, sr, cutoff=7000):
-                b, a = butter(4, cutoff / (0.5 * sr), btype='low')
-                return filtfilt(b, a, wav)
-            apply_lowpass = request.form.get('lowpass', 'true').lower() not in ('0','false','no')
-            if apply_lowpass:
-                waveform = lowpass(waveform, synthesizer.sample_rate, cutoff=7000)
-        except Exception:
-            # If scipy not available, skip lowpass
-            pass
-
-        waveform = normalize_audio(waveform)
-
-        # Auto-fallback: if using WaveRNN and output is likely noise, fall back to Griffin-Lim
-        if voc_mode == 'wave':
+        # Retry the Chatterbox worker up to 3 times.
+        # On first inference after startup the model's alignment analyser can
+        # throw a TypeError / IndexError before its buffer is populated; the
+        # worker itself also retries internally, but this outer retry ensures
+        # the browser never sees a 500 even when both collide on a cold start.
+        worker_response = None
+        last_worker_error = None
+        for attempt in range(3):
             try:
-                # High-frequency energy ratio heuristic
-                from scipy.signal import stft
-                f, t, Z = stft(waveform, fs=synthesizer.sample_rate, nperseg=1024)
-                hf_ratio = np.sum(np.abs(Z[f >= 6000])) / (np.sum(np.abs(Z)) + 1e-9)
-                if hf_ratio > 0.35:
-                    print('Detected high HF energy in WaveRNN output (hf_ratio=', hf_ratio, '), falling back to Griffin-Lim')
-                    waveform = synthesizer.griffin_lim(spec)
-                    waveform = normalize_audio(waveform)
-            except Exception:
-                pass
+                with reference_path.open("rb") as ref_stream:
+                    worker_response = http_requests.post(
+                        CHATTERBOX_WORKER_URL,
+                        data={"text": text, "language": language},
+                        files={"audio": (reference_path.name, ref_stream, "audio/wav")},
+                        timeout=600,
+                    )
+                if worker_response.ok:
+                    break
+                last_worker_error = worker_response.text
+                print(f"[WARN] Worker attempt {attempt+1} returned {worker_response.status_code}. Retrying...")
+            except Exception as exc:
+                last_worker_error = str(exc)
+                print(f"[WARN] Worker attempt {attempt+1} raised {type(exc).__name__}: {exc}. Retrying...")
 
-        # Save output
-        output_path = os.path.join(OUTPUT_FOLDER, "output.wav")
-        sf.write(output_path, waveform, synthesizer.sample_rate, subtype="PCM_16")
+        if worker_response is None or not worker_response.ok:
+            raise RuntimeError(
+                f"Voice generation failed after 3 attempts. "
+                f"Last error: {last_worker_error}"
+            )
 
-        # Clean up
-        os.remove(audio_path)
+        output_path.write_bytes(worker_response.content)
 
-        return send_file(output_path, mimetype='audio/wav', as_attachment=True, download_name='output.wav')
+        # Verify the model produced a non-empty audio file.
+        generated_audio, generated_sr = sf.read(output_path)
+        if generated_audio.size == 0:
+            raise RuntimeError("Chatterbox produced an empty audio file")
+        print(
+            f"[INFO] Chatterbox output: {len(generated_audio) / generated_sr:.2f}s, "
+            f"{generated_sr} Hz"
+        )
 
-    except Exception as e:
-        print("Error generating audio:", str(e))
-        return jsonify({'error': str(e)}), 500
+        @after_this_request
+        def cleanup_reference(response):
+            if reference_path is not None:
+                remove_file(reference_path)
+            return response
 
-@app.route('/')
+        return send_file(
+            output_path,
+            mimetype="audio/wav",
+            as_attachment=True,
+            download_name="cloned_voice_output.wav",
+        )
+
+    except ValueError as exc:
+        if reference_path is not None:
+            remove_file(reference_path)
+        return jsonify({"error": str(exc)}), 400
+    except Exception as exc:
+        if reference_path is not None:
+            remove_file(reference_path)
+        print(f"[ERROR] XTTS generation failed: {exc}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/audio_info", methods=["POST"])
+def audio_info():
+    temporary_path: Path | None = None
+    try:
+        if "audio" not in request.files:
+            return jsonify({"error": "No audio file provided"}), 400
+
+        audio_file = request.files["audio"]
+        safe_name = secure_filename(audio_file.filename or "reference_audio")
+        temporary_path = UPLOAD_FOLDER / f"_info_{uuid.uuid4().hex}_{safe_name}"
+        audio_file.save(temporary_path)
+
+        wav, sample_rate = librosa.load(str(temporary_path), sr=None, mono=True)
+        duration = len(wav) / float(sample_rate)
+        trimmed, _ = librosa.effects.trim(wav, top_db=30)
+        speech_duration = len(trimmed) / float(sample_rate)
+        quality = "good" if speech_duration >= 4 else "fair" if speech_duration >= 3 else "poor"
+
+        return jsonify({
+            "duration": round(duration, 2),
+            "speech_duration": round(speech_duration, 2),
+            "sample_rate": sample_rate,
+            "quality": quality,
+            "engine": "XTTS v2",
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    finally:
+        if temporary_path is not None:
+            remove_file(temporary_path)
+
+
+@app.route("/")
 def serve_frontend():
-    return send_file('index.html')
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000)
+    return send_file(REPO_ROOT / "index.html")
 
 
-
-
-
+if __name__ == "__main__":
+    app.run(debug=False, host="0.0.0.0", port=5000)

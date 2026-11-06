@@ -1,21 +1,74 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-# Virtual environment
+*$py.class
+
+# Virtual Environments
+venv/
+venv*/
 .venv/
+.venv*/
 env/
-# Models and large artifacts
+env*/
+*_venv/
+
+# PyCharm / IDEs / Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+
+# Audio Files & Datasets (Excluded from Git)
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.m4a
+*.aac
+*.wma
+
+# Output & Upload Directories
+uploads/
+outputs/
+testing_samples/
+temp/
+hifi_mels/
+diagnostics/
+.cache/
+
+# Model Weights & Pretrained Checkpoints
 *.pt
 *.pth
+*.onnx
+*.bin
 *.npy
-hifi_mels/
+*.npz
 saved_models/
-outputs/
-venv/
-.venv/
-__pycache__/
- 
+checkpoints/
+openvoice_checkpoints/
+openvoice_repo/
+
+# Logs & Temporary Files
+*.log
+nul
+server.log
+server_error.log
+chatterbox_worker.log
+chatterbox_worker_error.log
+
+# Scratch & Temporary Testing Scripts
+akka.png
+alignment.png
+spectrogram.png
+p2.py
+p3.py
+practice.py
+test_openvoice.py
+requirements-xtts.txt
+
+# OS Generated Files
+.DS_Store
+Thumbs.db
+desktop.ini
